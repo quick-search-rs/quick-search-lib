@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 abi_stable = "0.11.3"
+serde = { version = "1.0.197", features = ["derive"] }

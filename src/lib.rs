@@ -10,11 +10,12 @@ pub use chars::ColoredChar;
 use abi_stable::{
     library::{LibraryError, RootModule},
     package_version_strings, sabi_trait,
-    std_types::{RBox, RCowStr, RStr, RString, RVec},
+    std_types::{RBox, RCowStr, RHashMap, ROption, RStr, RString, RVec, Tuple2},
     StableAbi,
 };
 
 pub use abi_stable;
+use serde::{Deserialize, Serialize};
 
 #[sabi_trait]
 pub trait Searchable: Send + Sync + Clone {
@@ -22,7 +23,154 @@ pub trait Searchable: Send + Sync + Clone {
     fn name(&self) -> RStr<'static>;
     fn colored_name(&self) -> RVec<ColoredChar>;
     fn execute(&self, selected_result: &SearchResult);
-    fn plugin_id(&self) -> &PluginId;
+    fn plugin_id(&self) -> PluginId;
+
+    // config related
+    // will be called with EntryType containing the user configured values
+    fn lazy_load_config(&mut self, config: Config) {
+        let _ = config;
+    }
+    // when called, the contained values should be the defaults the plugin wants, will be called every time to ensure the config is valid and retrieve default values if it is malformed
+    fn get_config_entries(&self) -> Config {
+        Config { entries: RHashMap::new() }
+    }
+}
+
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[sabi(impl_InterfaceType(Clone, Debug, Send, Sync, PartialEq, Eq))]
+pub struct Config {
+    entries: RHashMap<RString, EntryType>,
+}
+
+impl Config {
+    pub fn new() -> Self {
+        Self { entries: RHashMap::new() }
+    }
+    pub fn get_or_default(&self, key: &str, defaults: &Config) -> Option<EntryType> {
+        self.entries.get(key).cloned().or_else(|| defaults.entries.get(key).cloned())
+    }
+    pub fn get(&self, key: &str) -> Option<&EntryType> {
+        self.entries.get(key)
+    }
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut EntryType> {
+        self.entries.get_mut(key)
+    }
+    pub fn insert(&mut self, key: RString, value: EntryType) {
+        self.entries.insert(key, value);
+    }
+    pub fn remove(&mut self, key: &RString) {
+        self.entries.remove(key);
+    }
+    pub fn empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (&RString, &EntryType)> {
+        self.entries.iter().map(|Tuple2(key, value)| (key, value))
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[sabi(impl_InterfaceType(Clone, Debug, Send, Sync, PartialEq, Eq))]
+pub enum EntryType {
+    String { value: RString },
+    Bool { value: bool },
+    Int { value: i64, min: ROption<i64>, max: ROption<i64> },
+    Float { value: f64, min: ROption<f64>, max: ROption<f64> },
+    List { value: RBox<RVec<EntryType>> },
+    HashMap { value: RBox<RHashMap<RString, EntryType>> },
+}
+
+impl EntryType {
+    pub fn as_string(&self) -> Option<&str> {
+        match self {
+            EntryType::String { value } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn as_string_mut(&mut self) -> Option<&mut RString> {
+        match self {
+            EntryType::String { value } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            EntryType::Bool { value } => Some(*value),
+            _ => None,
+        }
+    }
+    pub fn as_bool_mut(&mut self) -> Option<&mut bool> {
+        match self {
+            EntryType::Bool { value } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            EntryType::Int { value, .. } => Some(*value),
+            _ => None,
+        }
+    }
+    pub fn as_int_mut(&mut self) -> Option<&mut i64> {
+        match self {
+            EntryType::Int { value, .. } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn as_float(&self) -> Option<f64> {
+        match self {
+            EntryType::Float { value, .. } => Some(*value),
+            _ => None,
+        }
+    }
+    pub fn as_float_mut(&mut self) -> Option<&mut f64> {
+        match self {
+            EntryType::Float { value, .. } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn as_list(&self) -> Option<&RVec<EntryType>> {
+        match self {
+            EntryType::List { value } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn as_list_mut(&mut self) -> Option<&mut RVec<EntryType>> {
+        match self {
+            EntryType::List { value } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn as_hashmap(&self) -> Option<&RHashMap<RString, EntryType>> {
+        match self {
+            EntryType::HashMap { value } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn as_hashmap_mut(&mut self) -> Option<&mut RHashMap<RString, EntryType>> {
+        match self {
+            EntryType::HashMap { value } => Some(value),
+            _ => None,
+        }
+    }
+    pub fn variant(&self) -> u32 {
+        match self {
+            EntryType::String { .. } => 0,
+            EntryType::Bool { .. } => 1,
+            EntryType::Int { .. } => 2,
+            EntryType::Float { .. } => 3,
+            EntryType::List { .. } => 4,
+            EntryType::HashMap { .. } => 5,
+        }
+    }
 }
 
 #[repr(C)]
