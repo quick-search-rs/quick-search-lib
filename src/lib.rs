@@ -3,7 +3,7 @@
 
 mod chars;
 
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 pub use chars::ColoredChar;
 
@@ -15,7 +15,7 @@ use abi_stable::{
 };
 
 pub use abi_stable;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 #[sabi_trait]
 pub trait Searchable: Send + Sync + Clone {
@@ -40,7 +40,16 @@ pub trait Searchable: Send + Sync + Clone {
 #[derive(StableAbi, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[sabi(impl_InterfaceType(Clone, Debug, Send, Sync, PartialEq, Eq))]
 pub struct Config {
+    #[serde(serialize_with = "ordered_map")]
     entries: RHashMap<RString, EntryType>,
+}
+
+fn ordered_map<S, K: Ord + Serialize, V: Serialize>(value: &RHashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let ordered: BTreeMap<_, _> = value.iter().map(|Tuple2(k, v)| (k, v)).collect();
+    ordered.serialize(serializer)
 }
 
 impl Config {
