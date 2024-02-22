@@ -68,6 +68,9 @@ impl Config {
     pub fn iter(&self) -> impl Iterator<Item = (&RString, &EntryType)> {
         self.entries.iter().map(|Tuple2(key, value)| (key, value))
     }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&RString, &mut EntryType)> {
+        self.entries.iter_mut().map(|Tuple2(key, value)| (key, value))
+    }
 }
 
 impl Default for Config {
