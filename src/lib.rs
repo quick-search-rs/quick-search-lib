@@ -186,7 +186,7 @@ impl EntryType {
 }
 
 #[repr(C)]
-#[derive(StableAbi)]
+#[derive(StableAbi, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[sabi(impl_InterfaceType(Clone, Debug, Send, Sync, PartialEq, Eq))]
 pub struct SearchResult {
     title: RString,
