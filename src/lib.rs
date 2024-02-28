@@ -92,31 +92,19 @@ impl Default for Config {
 #[derive(StableAbi, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[sabi(impl_InterfaceType(Clone, Debug, Send, Sync, PartialEq, Eq))]
 pub enum EntryType {
-    String {
-        value: RString,
-    },
-    Bool {
-        value: bool,
-    },
-    Int {
-        value: i64,
-        #[serde(skip)]
-        min: ROption<i64>,
-        #[serde(skip)]
-        max: ROption<i64>,
-    },
-    Float {
-        value: f64,
-        #[serde(skip)]
-        min: ROption<f64>,
-        #[serde(skip)]
-        max: ROption<f64>,
-    },
-    Enum {
-        value: u8,
-        #[serde(skip)]
-        options: RVec<Tuple2<RString, u8>>,
-    },
+    String { value: RString },
+    Bool { value: bool },
+    Int { value: i64, min: ROption<i64>, max: ROption<i64> },
+    Float { value: f64, min: ROption<f64>, max: ROption<f64> },
+    Enum { value: u8, options: RVec<EnumEntry> },
+}
+
+#[repr(C)]
+#[derive(StableAbi, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[sabi(impl_InterfaceType(Clone, Debug, Send, Sync, PartialEq, Eq))]
+pub struct EnumEntry {
+    pub value: u8,
+    pub name: RString,
 }
 
 impl EntryType {
