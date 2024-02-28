@@ -92,12 +92,31 @@ impl Default for Config {
 #[derive(StableAbi, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[sabi(impl_InterfaceType(Clone, Debug, Send, Sync, PartialEq, Eq))]
 pub enum EntryType {
-    String { value: RString },
-    Bool { value: bool },
-    Int { value: i64, min: ROption<i64>, max: ROption<i64> },
-    Float { value: f64, min: ROption<f64>, max: ROption<f64> },
-    List { value: RBox<RVec<EntryType>> },
-    HashMap { value: RBox<RHashMap<RString, EntryType>> },
+    String {
+        value: RString,
+    },
+    Bool {
+        value: bool,
+    },
+    Int {
+        value: i64,
+        #[serde(skip)]
+        min: ROption<i64>,
+        #[serde(skip)]
+        max: ROption<i64>,
+    },
+    Float {
+        value: f64,
+        #[serde(skip)]
+        min: ROption<f64>,
+        #[serde(skip)]
+        max: ROption<f64>,
+    },
+    Enum {
+        value: u8,
+        #[serde(skip)]
+        options: RVec<Tuple2<RString, u8>>,
+    },
 }
 
 impl EntryType {
@@ -149,27 +168,15 @@ impl EntryType {
             _ => None,
         }
     }
-    pub fn as_list(&self) -> Option<&RVec<EntryType>> {
+    pub fn as_enum(&self) -> Option<u8> {
         match self {
-            EntryType::List { value } => Some(value),
+            EntryType::Enum { value, .. } => Some(*value),
             _ => None,
         }
     }
-    pub fn as_list_mut(&mut self) -> Option<&mut RVec<EntryType>> {
+    pub fn as_enum_mut(&mut self) -> Option<&mut u8> {
         match self {
-            EntryType::List { value } => Some(value),
-            _ => None,
-        }
-    }
-    pub fn as_hashmap(&self) -> Option<&RHashMap<RString, EntryType>> {
-        match self {
-            EntryType::HashMap { value } => Some(value),
-            _ => None,
-        }
-    }
-    pub fn as_hashmap_mut(&mut self) -> Option<&mut RHashMap<RString, EntryType>> {
-        match self {
-            EntryType::HashMap { value } => Some(value),
+            EntryType::Enum { value, .. } => Some(value),
             _ => None,
         }
     }
@@ -179,8 +186,7 @@ impl EntryType {
             EntryType::Bool { .. } => 1,
             EntryType::Int { .. } => 2,
             EntryType::Float { .. } => 3,
-            EntryType::List { .. } => 4,
-            EntryType::HashMap { .. } => 5,
+            EntryType::Enum { .. } => 4,
         }
     }
 }
