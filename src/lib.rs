@@ -127,6 +127,15 @@ pub struct EnumEntry {
     pub name: RString,
 }
 
+impl<T> From<(T, u8)> for EnumEntry
+where
+    T: Into<RString>,
+{
+    fn from((name, value): (T, u8)) -> Self {
+        Self { value, name: name.into() }
+    }
+}
+
 impl EntryType {
     pub fn as_string(&self) -> Option<&str> {
         match self {
