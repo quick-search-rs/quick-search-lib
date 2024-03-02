@@ -153,11 +153,11 @@ impl LogLevelOrCustom {
 #[repr(u8)]
 #[derive(StableAbi, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, PartialOrd, Ord)]
 pub enum LogLevel {
-    Debug = 16,
-    Info = 8,
-    Warn = 4,
-    Error = 2,
     Trace = 1,
+    Debug = 2,
+    Info = 4,
+    Warn = 8,
+    Error = 16,
 }
 
 #[repr(transparent)]
