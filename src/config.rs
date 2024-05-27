@@ -87,6 +87,7 @@ pub enum EntryType {
         #[serde(default)]
         options: RVec<EnumEntry>,
     },
+    None,
 }
 
 #[repr(C)]
@@ -174,6 +175,7 @@ impl EntryType {
             EntryType::Int { .. } => 2,
             EntryType::Float { .. } => 3,
             EntryType::Enum { .. } => 4,
+            EntryType::None => 5,
         }
     }
 }
