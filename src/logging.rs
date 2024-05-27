@@ -42,6 +42,7 @@ pub trait Log {
     fn log_level(&self) -> LogLevelOrCustom;
     fn source(&self) -> RArc<RString>;
     fn send(&self, message: LogMessage) -> Result<(), LogMessage>;
+    fn import_deserialize(&self, message: &str);
 }
 
 // main struct for logging, keeps a list of all pending log messages and handles receiving new log messages
@@ -49,38 +50,58 @@ pub trait Log {
 #[derive(StableAbi)]
 pub struct Logger {
     messages: RReceiver<LogMessage>,
-    _log_level: RArc<RMutex<LogLevelOrCustom>>,
-    _sender: RSender<LogMessage>,
-    _source: RArc<RString>,
+    log_level: RArc<RMutex<LogLevelOrCustom>>,
+    sender: RSender<LogMessage>,
+    source: RArc<RString>,
+    stdout: bool,
 }
 
 impl Log for Logger {
     fn log_level(&self) -> LogLevelOrCustom {
-        *self._log_level.lock()
+        *self.log_level.lock()
     }
     fn source(&self) -> RArc<RString> {
-        RArc::clone(&self._source)
+        RArc::clone(&self.source)
     }
     fn send(&self, message: LogMessage) -> Result<(), LogMessage> {
-        self._sender.send(message).map_err(|e| e.0)
+        if self.stdout {
+            println!("{}", serde_json::to_string(&message).unwrap_or_default());
+        }
+        self.sender.send(message).map_err(|e| e.0)
+    }
+    fn import_deserialize(&self, message: &str) {
+        if message.is_empty() {
+            return;
+        }
+        // attempt to deserialize the message
+        if let Ok(message) = serde_json::from_str::<LogMessage>(message) {
+            // if the message is deserialized successfully, send it
+            if self.send(message).is_err() {
+                eprintln!("Error sending log message") // kinda meta having a log message about a log message failing lol but i dont want to do anything else here
+            };
+        } else {
+            // if the message fails to deserialize, log an error
+            self.error(&format!("Failed to deserialize log message: {}", message));
+        }
     }
 }
 
 impl Logger {
-    pub fn new(log_level: LogLevelOrCustom) -> Self {
-        let (_sender, messages) = crossbeam_channel::unbounded();
+    pub fn new(log_level: LogLevelOrCustom, stdout: bool) -> Self {
+        let (sender, messages) = crossbeam_channel::unbounded();
         Self {
             messages,
-            _log_level: RArc::new(RMutex::new(log_level)),
-            _sender,
-            _source: RArc::new("raw".into()),
+            log_level: RArc::new(RMutex::new(log_level)),
+            sender,
+            source: RArc::new("raw".into()),
+            stdout,
         }
     }
     pub fn new_scoped(&self, source: &str) -> ScopedLogger {
-        ScopedLogger::new(RArc::clone(&self._log_level), source, RSender::clone(&self._sender))
+        ScopedLogger::new(RArc::clone(&self.log_level), source, RSender::clone(&self.sender), self.stdout)
     }
     pub fn set_log_level(&self, log_level: LogLevelOrCustom) {
-        *self._log_level.lock() = log_level;
+        *self.log_level.lock() = log_level;
     }
     pub fn get(&self) -> Vec<LogMessage> {
         let mut messages = Vec::new();
@@ -94,29 +115,49 @@ impl Logger {
 #[repr(C)]
 #[derive(StableAbi)]
 pub struct ScopedLogger {
-    _log_level: RArc<RMutex<LogLevelOrCustom>>,
-    _source: RArc<RString>,
-    _sender: RSender<LogMessage>,
+    log_level: RArc<RMutex<LogLevelOrCustom>>,
+    source: RArc<RString>,
+    sender: RSender<LogMessage>,
+    stdout: bool,
 }
 
 impl Log for ScopedLogger {
     fn log_level(&self) -> LogLevelOrCustom {
-        *self._log_level.lock()
+        *self.log_level.lock()
     }
     fn source(&self) -> RArc<RString> {
-        RArc::clone(&self._source)
+        RArc::clone(&self.source)
     }
     fn send(&self, message: LogMessage) -> Result<(), LogMessage> {
-        self._sender.send(message).map_err(|e| e.0)
+        if self.stdout {
+            println!("{}", serde_json::to_string(&message).unwrap_or_default());
+        }
+        self.sender.send(message).map_err(|e| e.0)
+    }
+    fn import_deserialize(&self, message: &str) {
+        if message.is_empty() {
+            return;
+        }
+        // attempt to deserialize the message
+        if let Ok(message) = serde_json::from_str::<LogMessage>(message) {
+            // if the message is deserialized successfully, send it
+            if self.send(message).is_err() {
+                eprintln!("Error sending log message") // kinda meta having a log message about a log message failing lol but i dont want to do anything else here
+            };
+        } else {
+            // if the message fails to deserialize, log an error
+            self.error(&format!("Failed to deserialize log message: {}", message));
+        }
     }
 }
 
 impl ScopedLogger {
-    pub fn new(_log_level: RArc<RMutex<LogLevelOrCustom>>, source: &str, sender: RSender<LogMessage>) -> Self {
+    pub fn new(log_level: RArc<RMutex<LogLevelOrCustom>>, source: &str, sender: RSender<LogMessage>, stdout: bool) -> Self {
         Self {
-            _log_level,
-            _source: RArc::new(source.into()),
-            _sender: sender,
+            log_level,
+            source: RArc::new(source.into()),
+            sender,
+            stdout,
         }
     }
 }
@@ -175,12 +216,47 @@ impl LogLevelBitmask {
 
 // main struct for log messages, keeps the message, the level, the source, and the time it was received
 #[repr(C)]
-#[derive(StableAbi)]
+#[derive(StableAbi, Serialize, Deserialize)]
 pub struct LogMessage {
     pub message: RArc<RString>,
     pub level: LogLevel,
     pub source: RArc<RString>,
+    #[serde(with = "u128_wrapper")]
     pub time: U128Wrapper,
+}
+
+mod u128_wrapper {
+    use super::U128Wrapper;
+    use serde::{de::Visitor, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &U128Wrapper, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u128(value.get())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<U128Wrapper, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let visitor = U128WrapperVisitor;
+        Ok(U128Wrapper::new(deserializer.deserialize_u128(visitor)?))
+    }
+
+    struct U128WrapperVisitor;
+
+    impl<'de> Visitor<'de> for U128WrapperVisitor {
+        type Value = u128;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a u128")
+        }
+
+        fn visit_u128<E>(self, value: u128) -> Result<u128, E> {
+            Ok(value)
+        }
+    }
 }
 
 #[repr(C)]
