@@ -86,7 +86,7 @@ impl SearchResult {
 #[sabi(missing_field(panic))]
 pub struct SearchLib {
     #[sabi(last_prefix_field)]
-    get_searchable: extern "C" fn(PluginId, ScopedLogger) -> SearchableBox,
+    pub get_searchable: extern "C" fn(PluginId, ScopedLogger) -> SearchableBox,
 }
 
 #[repr(C)]
