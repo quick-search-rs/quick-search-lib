@@ -36,9 +36,7 @@ pub trait Searchable: Send + Sync {
     fn get_config_entries(&self) -> Config {
         Config::default()
     }
-    fn version(&self) -> RStr<'static> {
-        "0.1.0".into()
-    }
+    fn version(&self) -> RStr<'static>;
 }
 
 #[repr(C)]
