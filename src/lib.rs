@@ -4,7 +4,7 @@ mod chars;
 mod config;
 mod logging;
 
-use std::path::Path;
+use std::path::PathBuf;
 
 pub use chars::*;
 pub use config::*;
@@ -17,7 +17,6 @@ use abi_stable::{
     StableAbi,
 };
 
-pub use abi_stable;
 use serde::{Deserialize, Serialize};
 
 #[sabi_trait]
@@ -48,7 +47,7 @@ pub struct SearchResult {
     extra_info: RString,
 }
 
-pub type SearchableBox = Searchable_TO<'static, RBox<()>>;
+type SearchableBox = Searchable_TO<'static, RBox<()>>;
 
 impl SearchResult {
     pub fn new(title: &str) -> Self {
@@ -85,9 +84,9 @@ impl SearchResult {
 #[derive(StableAbi)]
 #[sabi(kind(Prefix(prefix_ref = SearchLib_Ref)))]
 #[sabi(missing_field(panic))]
-pub struct SearchLib {
+struct SearchLib {
     #[sabi(last_prefix_field)]
-    pub get_searchable: extern "C" fn(PluginId, ScopedLogger) -> SearchableBox,
+    get_searchable: extern "C" fn(PluginId, ScopedLogger) -> SearchableBox,
 }
 
 #[repr(C)]
@@ -104,13 +103,66 @@ impl RootModule for SearchLib_Ref {
     const VERSION_STRINGS: abi_stable::sabi_types::VersionStrings = package_version_strings!();
 }
 
-pub fn load_library(path: &Path) -> Result<SearchLib_Ref, LibraryError> {
-    abi_stable::library::lib_header_from_path(path).and_then(|x| x.init_root_module::<SearchLib_Ref>())
-    // SearchLib_Ref::load_from_file(path)
+pub struct SearchableLibrary {
+    lib: SearchLib_Ref,
+    path: PathBuf,
+    raw_lib: abi_stable::library::RawLibrary,
+    searchable: SearchableBox,
 }
 
-pub fn check_library(path: &Path) -> Result<(), LibraryError> {
-    let raw_library = abi_stable::library::RawLibrary::load_at(path)?;
-    unsafe { abi_stable::library::lib_header_from_raw_library(&raw_library) }.and_then(|x| x.check_layout::<SearchLib_Ref>())?;
-    Ok(())
+impl SearchableLibrary {
+    pub fn new(path: PathBuf, logger: ScopedLogger) -> Result<Self, LibraryError> {
+        let raw_lib = abi_stable::library::RawLibrary::load_at(&path)?;
+        let lib = Self::load(&raw_lib)?;
+        Ok(Self {
+            searchable: lib.get_searchable()(
+                PluginId {
+                    filename: {
+                        path.file_name()
+                            .ok_or(LibraryError::RootModule {
+                                err: abi_stable::library::RootModuleError::Unwound,
+                                module_name: "SearchLib_Ref",
+                                version: package_version_strings!(),
+                            })?
+                            .to_string_lossy()
+                            .into_owned()
+                            .into()
+                    },
+                },
+                logger,
+            ),
+            lib,
+            path,
+            raw_lib,
+        })
+    }
+    fn load(raw_lib: &abi_stable::library::RawLibrary) -> Result<SearchLib_Ref, LibraryError> {
+        unsafe { abi_stable::library::lib_header_from_raw_library(raw_lib) }.and_then(|x| x.init_root_module::<SearchLib_Ref>())
+    }
+    pub fn query(&self, query: &str) -> RVec<SearchResult> {
+        self.searchable.search(query.into())
+    }
+    pub fn name(&self) -> &str {
+        self.searchable.name().into()
+    }
+    pub fn colored_name(&self) -> RVec<ColoredChar> {
+        self.searchable.colored_name()
+    }
+    pub fn execute(&self, selected_result: &SearchResult) {
+        self.searchable.execute(selected_result)
+    }
+    pub fn plugin_id(&self) -> PluginId {
+        self.searchable.plugin_id()
+    }
 }
+
+// fn load_library(path: &Path) -> Result<SearchLib_Ref, LibraryError> {
+//     abi_stable::library::lib_header_from_path(path).and_then(|x| x.init_root_module::<SearchLib_Ref>())
+//     // SearchLib_Ref::load_from_file(path)
+// }
+
+// fn check_library(path: &Path) -> Result<(), LibraryError> {
+//     let raw_library = abi_stable::library::RawLibrary::load_at(path)?;
+//     unsafe { abi_stable::library::lib_header_from_raw_library(&raw_library) }.and_then(|x| x.check_layout::<SearchLib_Ref>())?;
+//     Ok(())
+// }
