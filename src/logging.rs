@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 
 pub trait Log {
     fn log(&self, message: &str, level: LogLevel) {
+        #[cfg(feature = "debug")]
+        eprintln!("{}: {}", level, message);
         if self.log_level().is_enabled(level) {
             let message = LogMessage {
                 message: RArc::new(message.into()),
@@ -199,6 +201,19 @@ pub enum LogLevel {
     Info = 4,
     Warn = 8,
     Error = 16,
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        // use ansi color codes for the terminal
+        match self {
+            LogLevel::Trace => write!(f, "\x1b[37mTRACE\x1b[0m"),
+            LogLevel::Debug => write!(f, "\x1b[34mDEBUG\x1b[0m"),
+            LogLevel::Info => write!(f, "\x1b[32mINFO\x1b[0m"),
+            LogLevel::Warn => write!(f, "\x1b[33mWARN\x1b[0m"),
+            LogLevel::Error => write!(f, "\x1b[31mERROR\x1b[0m"),
+        }
+    }
 }
 
 #[repr(transparent)]

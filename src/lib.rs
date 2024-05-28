@@ -4,7 +4,7 @@ mod chars;
 mod config;
 mod logging;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub use chars::*;
 pub use config::*;
@@ -103,19 +103,37 @@ impl RootModule for SearchLib_Ref {
     const VERSION_STRINGS: abi_stable::sabi_types::VersionStrings = package_version_strings!();
 }
 
+// ORDERING IS IMPORTANT, WE NEED THE FIELDS TO DROP IN THIS ORDER:
+// 1. searchable
+// 2. lib
+// 3. raw_lib
 pub struct SearchableLibrary {
-    lib: SearchLib_Ref,
     path: PathBuf,
-    raw_lib: abi_stable::library::RawLibrary,
-    searchable: SearchableBox,
+    searchable: Option<SearchableBox>,
+    #[cfg(not(feature = "leaky-loader"))]
+    raw_lib: Option<abi_stable::library::RawLibrary>,
 }
 
 impl SearchableLibrary {
     pub fn new(path: PathBuf, logger: ScopedLogger) -> Result<Self, LibraryError> {
+        #[cfg(not(feature = "leaky-loader"))]
         let raw_lib = abi_stable::library::RawLibrary::load_at(&path)?;
-        let lib = Self::load(&raw_lib)?;
+        #[cfg(feature = "leaky-loader")]
+        {
+            check_library(&path)?;
+        }
         Ok(Self {
-            searchable: lib.get_searchable()(
+            searchable: Some({
+                #[cfg(not(feature = "leaky-loader"))]
+                {
+                    Self::load(&raw_lib)?
+                }
+                #[cfg(feature = "leaky-loader")]
+                {
+                    load_library(&path)?
+                }
+            }
+            .get_searchable()(
                 PluginId {
                     filename: {
                         path.file_name()
@@ -130,45 +148,56 @@ impl SearchableLibrary {
                     },
                 },
                 logger,
-            ),
-            lib,
+            )),
+            #[cfg(not(feature = "leaky-loader"))]
+            raw_lib: Some(raw_lib),
             path,
-            raw_lib,
         })
     }
+    #[cfg(not(feature = "leaky-loader"))]
     fn load(raw_lib: &abi_stable::library::RawLibrary) -> Result<SearchLib_Ref, LibraryError> {
         unsafe { abi_stable::library::lib_header_from_raw_library(raw_lib) }.and_then(|x| x.init_root_module::<SearchLib_Ref>())
     }
     pub fn search(&self, query: &str) -> Vec<SearchResult> {
-        self.searchable.search(query.into()).into()
+        unsafe { self.searchable.as_ref().unwrap_unchecked() }.search(query.into()).into()
     }
     pub fn name(&self) -> &str {
-        self.searchable.name().into()
+        unsafe { self.searchable.as_ref().unwrap_unchecked() }.name().into()
     }
     pub fn colored_name(&self) -> Vec<ColoredChar> {
-        self.searchable.colored_name().into()
+        unsafe { self.searchable.as_ref().unwrap_unchecked() }.colored_name().into()
     }
     pub fn execute(&self, selected_result: &SearchResult) {
-        self.searchable.execute(selected_result);
+        unsafe { self.searchable.as_ref().unwrap_unchecked() }.execute(selected_result);
     }
     pub fn plugin_id(&self) -> PluginId {
-        self.searchable.plugin_id()
+        unsafe { self.searchable.as_ref().unwrap_unchecked() }.plugin_id()
     }
     pub fn lazy_load_config(&mut self, config: Config) {
-        self.searchable.lazy_load_config(config);
+        unsafe { self.searchable.as_mut().unwrap_unchecked() }.lazy_load_config(config);
     }
     pub fn get_config_entries(&self) -> Config {
-        self.searchable.get_config_entries()
+        unsafe { self.searchable.as_ref().unwrap_unchecked() }.get_config_entries()
     }
 }
 
-// fn load_library(path: &Path) -> Result<SearchLib_Ref, LibraryError> {
-//     abi_stable::library::lib_header_from_path(path).and_then(|x| x.init_root_module::<SearchLib_Ref>())
-//     // SearchLib_Ref::load_from_file(path)
-// }
+impl Drop for SearchableLibrary {
+    fn drop(&mut self) {
+        #[cfg(feature = "debug")]
+        eprintln!("Dropping SearchableLibrary: {:?}", self.path);
+        std::mem::drop(self.searchable.take());
+        #[cfg(not(feature = "leaky-loader"))]
+        std::mem::drop(self.raw_lib.take());
+    }
+}
 
-// fn check_library(path: &Path) -> Result<(), LibraryError> {
-//     let raw_library = abi_stable::library::RawLibrary::load_at(path)?;
-//     unsafe { abi_stable::library::lib_header_from_raw_library(&raw_library) }.and_then(|x| x.check_layout::<SearchLib_Ref>())?;
-//     Ok(())
-// }
+fn load_library(path: &Path) -> Result<SearchLib_Ref, LibraryError> {
+    abi_stable::library::lib_header_from_path(path).and_then(|x| x.init_root_module::<SearchLib_Ref>())
+    // SearchLib_Ref::load_from_file(path)
+}
+
+fn check_library(path: &Path) -> Result<(), LibraryError> {
+    let raw_library = abi_stable::library::RawLibrary::load_at(path)?;
+    unsafe { abi_stable::library::lib_header_from_raw_library(&raw_library) }.and_then(|x| x.check_layout::<SearchLib_Ref>())?;
+    Ok(())
+}
