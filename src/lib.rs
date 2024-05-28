@@ -139,20 +139,26 @@ impl SearchableLibrary {
     fn load(raw_lib: &abi_stable::library::RawLibrary) -> Result<SearchLib_Ref, LibraryError> {
         unsafe { abi_stable::library::lib_header_from_raw_library(raw_lib) }.and_then(|x| x.init_root_module::<SearchLib_Ref>())
     }
-    pub fn query(&self, query: &str) -> RVec<SearchResult> {
-        self.searchable.search(query.into())
+    pub fn search(&self, query: &str) -> Vec<SearchResult> {
+        self.searchable.search(query.into()).into()
     }
     pub fn name(&self) -> &str {
         self.searchable.name().into()
     }
-    pub fn colored_name(&self) -> RVec<ColoredChar> {
-        self.searchable.colored_name()
+    pub fn colored_name(&self) -> Vec<ColoredChar> {
+        self.searchable.colored_name().into()
     }
     pub fn execute(&self, selected_result: &SearchResult) {
-        self.searchable.execute(selected_result)
+        self.searchable.execute(selected_result);
     }
     pub fn plugin_id(&self) -> PluginId {
         self.searchable.plugin_id()
+    }
+    pub fn lazy_load_config(&mut self, config: Config) {
+        self.searchable.lazy_load_config(config);
+    }
+    pub fn get_config_entries(&self) -> Config {
+        self.searchable.get_config_entries()
     }
 }
 
