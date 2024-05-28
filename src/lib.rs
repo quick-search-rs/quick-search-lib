@@ -108,3 +108,9 @@ pub fn load_library(path: &Path) -> Result<SearchLib_Ref, LibraryError> {
     abi_stable::library::lib_header_from_path(path).and_then(|x| x.init_root_module::<SearchLib_Ref>())
     // SearchLib_Ref::load_from_file(path)
 }
+
+pub fn check_library(path: &Path) -> Result<(), LibraryError> {
+    let raw_library = abi_stable::library::RawLibrary::load_at(path)?;
+    unsafe { abi_stable::library::lib_header_from_raw_library(&raw_library) }.and_then(|x| x.check_layout::<SearchLib_Ref>())?;
+    Ok(())
+}
