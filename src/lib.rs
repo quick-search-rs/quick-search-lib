@@ -36,6 +36,9 @@ pub trait Searchable: Send + Sync {
     fn get_config_entries(&self) -> Config {
         Config::default()
     }
+    fn version(&self) -> RStr<'static> {
+        "0.1.0".into()
+    }
 }
 
 #[repr(C)]
@@ -178,6 +181,9 @@ impl SearchableLibrary {
     }
     pub fn get_config_entries(&self) -> Config {
         unsafe { self.searchable.as_ref().unwrap_unchecked() }.get_config_entries()
+    }
+    pub fn version(&self) -> &'static str {
+        unsafe { self.searchable.as_ref().unwrap_unchecked() }.version().into()
     }
 }
 
